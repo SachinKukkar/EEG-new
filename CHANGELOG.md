@@ -8,12 +8,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Real-time EEG streaming authentication
 - Advanced user analytics dashboard
 - Multi-factor authentication integration
 - Mobile application (React Native)
 - Kubernetes deployment configurations
-- Rate limiting on API endpoints
+- Rate limiting on API endpoints (per-IP)
+
+---
+
+## [3.0.0] - 2026-03-08
+
+### Added
+- **Hardware REST endpoint** `POST /api/authenticate/raw` — accepts raw EEG samples as a
+  JSON array `[T][4]` from any hardware SDK (OpenBCI, BrainFlow, Emotiv, etc.).
+- **WebSocket streaming endpoint** `/ws/stream` — real-time EEG authentication where the
+  device can stream live samples and trigger classification without file uploads.
+- **Bandpass filter (0.5–40 Hz)** applied to all incoming EEG using a 4th-order
+  Butterworth filter (SOS form for numerical stability).
+- **50 Hz notch filter** removes mains-frequency interference (configurable via
+  `NOTCH_FREQ` env var; set to `60` for USA/Canada).
+- **Artifact rejection** — every segment is tested with a peak-to-peak amplitude check
+  (< 150 µV) and a per-channel z-score check (threshold = 4σ). Flat channels (potential
+  electrode-off) are also detected. Fallback to unfiltered segments when all are rejected,
+  so authentication never silently returns zero results.
+- **`preprocess_raw_eeg()`** — single pipeline function that interpolates NaNs/Infs,
+  filters, segments, and runs artifact rejection on continuous hardware data.
+- **Environment-variable driven config** (`config.py`, `db_config.py`) — every
+  deployment-sensitive value (DB password, origins, thresholds) is now read from env
+  vars. A `.env.example` template covers all options.
+- **Configurable CORS** via `ALLOWED_ORIGINS` env var (was hardcoded `"*"`).
+- **Optional API-key enforcement** — set `API_KEY` env var to require
+  `X-API-Key` header on all requests (except `/docs` and `/api/health`).
+- **`python-dotenv`** loads `.env` automatically in development.
+- **`websockets`** added to requirements for WebSocket support.
+- **Hardware Streaming tab** in the React frontend with REST and WebSocket modes.
+- **`authenticateRaw()`** and **`createStreamSocket()`** helper functions added to
+  `frontend/src/api/client.js`.
+- `X-API-Key` header automatically attached in frontend if `VITE_API_KEY` env var set.
+- Non-root Docker user (`appuser`, UID 1001) for container security.
+- `--timeout-keep-alive 75` on uvicorn for stable WebSocket connections behind a proxy.
+
+### Changed
+- `authenticate()` in `backend.py` accepts optional `precomputed_segments` kwarg so the
+  hardware endpoint reuses the existing classification pipeline without file I/O.
+- CORS `allow_origins` changed from `["*"]` to a configurable list.
+- `load_and_segment_csv()` now applies bandpass + notch filtering and artifact rejection
+  instead of only filling NaN with zeros.
+- `docker-compose.yml` — DB passwords no longer have insecure defaults; must be
+  explicitly set via `.env`.
+- `Dockerfile.backend` healthcheck uses `urllib.request` (stdlib) instead of `requests`.
+- API version bumped to `3.0.0`.
+- Frontend footer updated to `v3.0`.
+
+### Removed
+- `PyQt5`, `matplotlib`, `seaborn`, `reportlab`, `streamlit` from `requirements.txt`
+  (desktop/notebook dependencies not needed in the web API).
+- `run_api.bat`, `run_frontend.bat` (replaced by uvicorn/vite CLI commands).
+- Hardcoded DB password `5911` from `db_config.py`.
+- Hardcoded `allow_origins=["*"]` CORS policy.
+
+### Security
+- No credentials or secrets in source files — all via env vars.
+- CORS locked to explicit allowed origins.
+- Optional API key authentication middleware.
+- File upload size capped at 50 MB.
+- Hardware POST sample count capped at `MAX_HARDWARE_SAMPLES` (default 120 s @ 256 Hz).
+- Docker container runs as non-root user.
 
 ---
 

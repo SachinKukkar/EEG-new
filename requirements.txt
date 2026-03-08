@@ -1,16 +1,20 @@
-torch>=1.9.0
-pandas>=1.3.0
-numpy>=1.21.0
-scikit-learn>=1.0.0
-joblib>=1.0.0
-PyQt5>=5.15.0
-matplotlib>=3.5.0
-seaborn>=0.11.0
-reportlab>=3.6.0
-scipy>=1.7.0
-streamlit>=1.28.0
-plotly>=5.14.0
-mysql-connector-python>=8.0.0
+# Core ML / Signal Processing
+torch>=2.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+joblib>=1.3.0
+
+# API
 fastapi>=0.115.0
-uvicorn>=0.34.0
+uvicorn[standard]>=0.34.0
 python-multipart>=0.0.20
+websockets>=12.0
+python-dotenv>=1.0.0
+
+# Database
+mysql-connector-python>=8.0.0
+
+# Metrics / Plotting (backend evaluation only)
+plotly>=5.14.0

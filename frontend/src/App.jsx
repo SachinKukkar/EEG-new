@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   authenticateUser,
+  authenticateRaw,
+  createStreamSocket,
   deleteUser,
   getAuthLogs,
   getDashboard,
@@ -65,6 +67,14 @@ export default function App() {
   });
   const [metricsThreshold, setMetricsThreshold] = useState(0.9);
   const [metrics, setMetrics] = useState(null);
+
+  // Hardware streaming state
+  const [hwForm, setHwForm] = useState({ username: "", subjectId: 1, threshold: 0.9 });
+  const [hwMode, setHwMode] = useState("rest"); // "rest" | "ws"
+  const [hwResult, setHwResult] = useState(null);
+  const [hwStatus, setHwStatus] = useState("");
+  const [hwFile, setHwFile] = useState(null);
+  const wsRef = useRef(null);
 
   const notify = useCallback((type, text) => setNotice({ type, text }), []);
 
@@ -194,6 +204,87 @@ export default function App() {
     }
   }
 
+  /* ---------- Hardware authentication (REST raw) ---------- */
+
+  async function onHardwareAuth(e) {
+    e.preventDefault();
+    if (!hwFile) { notify("error", "Select a raw EEG CSV file."); return; }
+    setBusy(true);
+    setHwResult(null);
+    setHwStatus("Reading file…");
+    try {
+      const text = await hwFile.text();
+      const lines = text.trim().split("\n").filter(Boolean);
+      // Detect header row — skip if non-numeric first field
+      const start = isNaN(parseFloat(lines[0].split(",")[0])) ? 1 : 0;
+      const eegData = lines.slice(start).map((row) =>
+        row.split(",").slice(0, 4).map(Number)
+      );
+      if (eegData.length === 0) { notify("error", "CSV is empty or unreadable."); return; }
+      setHwStatus(`Sending ${eegData.length} samples to API…`);
+      const res = await authenticateRaw({
+        eegData,
+        username: hwForm.username.trim(),
+        subjectId: Number(hwForm.subjectId),
+        threshold: Number(hwForm.threshold),
+      });
+      setHwResult(res);
+      notify(res.success ? "success" : "error", res.message);
+      await refresh();
+    } catch (err) {
+      const msg = err?.response?.data?.detail || err.message || "Hardware auth failed.";
+      setHwResult({ success: false, message: msg });
+      notify("error", msg);
+    } finally {
+      setBusy(false);
+      setHwStatus("");
+    }
+  }
+
+  /* ---------- WebSocket streaming ---------- */
+
+  function onWsConnect() {
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+    setHwStatus("Connecting via WebSocket…");
+    wsRef.current = createStreamSocket({
+      username: hwForm.username.trim(),
+      subjectId: Number(hwForm.subjectId),
+      threshold: Number(hwForm.threshold),
+      onReady: (msg) => setHwStatus(`✅ ${msg.message} — Send data then click Predict.`),
+      onResult: (msg) => {
+        setHwResult(msg);
+        setHwStatus("");
+        notify(msg.success ? "success" : "error", msg.message);
+      },
+      onError: (msg) => { setHwStatus(`WebSocket error: ${msg.detail}`); },
+    });
+  }
+
+  async function onWsSendFile() {
+    if (!wsRef.current || !hwFile) { notify("error", "Connect first, then select a file."); return; }
+    const text = await hwFile.text();
+    const lines = text.trim().split("\n").filter(Boolean);
+    const start = isNaN(parseFloat(lines[0].split(",")[0])) ? 1 : 0;
+    const samples = lines.slice(start).map((r) => r.split(",").slice(0, 4).map(Number));
+    // Send in chunks of 256 to avoid huge single frames
+    const CHUNK = 256;
+    for (let i = 0; i < samples.length; i += CHUNK) {
+      wsRef.current.sendChunk(samples.slice(i, i + CHUNK));
+    }
+    setHwStatus(`Streamed ${samples.length} samples. Click Predict to classify.`);
+  }
+
+  function onWsPredict() {
+    if (!wsRef.current) { notify("error", "Not connected."); return; }
+    wsRef.current.predict();
+    setHwStatus("Predicting…");
+  }
+
+  function onWsDisconnect() {
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+    setHwStatus("Disconnected.");
+  }
+
   /* ---------- Metrics ---------- */
 
   async function onMetrics() {
@@ -218,6 +309,7 @@ export default function App() {
     ["users", "Users"],
     ["train", "Training"],
     ["auth", "Authentication"],
+    ["hardware", "🔌 Hardware"],
     ["metrics", "Metrics"],
     ["logs", "Auth Logs"],
   ];
@@ -546,7 +638,127 @@ export default function App() {
         </section>
       )}
 
-      {/* ========== Metrics ========== */}
+      {/* ========== Hardware Streaming ========== */}
+      {tab === "hardware" && (
+        <section className="panel">
+          <h2>Hardware EEG Authentication</h2>
+          <p className="muted">
+            Connect your EEG headset and authenticate without uploading a pre-recorded file.
+            Channels expected (in order): <code>P4, Cz, F8, T7</code> at 256 Hz.
+          </p>
+
+          {/* Mode toggle */}
+          <div className="row-flex" style={{ marginBottom: 16 }}>
+            <button
+              className={`btn btn-sm${hwMode === "rest" ? " btn-active" : " btn-outline"}`}
+              onClick={() => setHwMode("rest")}
+            >
+              REST Upload
+            </button>
+            <button
+              className={`btn btn-sm${hwMode === "ws" ? " btn-active" : " btn-outline"}`}
+              onClick={() => setHwMode("ws")}
+            >
+              WebSocket Stream
+            </button>
+          </div>
+
+          <div className="split">
+            <div>
+              {/* Shared fields */}
+              <div className="form">
+                <label>
+                  Claimed Username
+                  <input
+                    value={hwForm.username}
+                    onChange={(e) => setHwForm((s) => ({ ...s, username: e.target.value }))}
+                    placeholder="e.g. alice"
+                  />
+                </label>
+                <label>
+                  Subject ID
+                  <input
+                    type="number" min={1} max={999}
+                    value={hwForm.subjectId}
+                    onChange={(e) => setHwForm((s) => ({ ...s, subjectId: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  Confidence Threshold
+                  <input
+                    type="number" min={0} max={1} step={0.01}
+                    value={hwForm.threshold}
+                    onChange={(e) => setHwForm((s) => ({ ...s, threshold: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  EEG Data File (CSV, columns: P4 Cz F8 T7)
+                  <input
+                    type="file" accept=".csv"
+                    onChange={(e) => setHwFile(e.target.files?.[0] || null)}
+                  />
+                </label>
+              </div>
+
+              {hwMode === "rest" ? (
+                <form onSubmit={onHardwareAuth}>
+                  <button className="btn" disabled={busy}>
+                    {busy ? <><Spinner /> Authenticating…</> : "⚡ Send to API"}
+                  </button>
+                </form>
+              ) : (
+                <div className="form" style={{ marginTop: 12 }}>
+                  <div className="row-flex">
+                    <button className="btn" onClick={onWsConnect}>Connect</button>
+                    <button className="btn btn-outline" onClick={onWsSendFile} disabled={!hwFile}>Stream File</button>
+                    <button className="btn btn-outline" onClick={onWsPredict}>Predict</button>
+                    <button className="btn btn-danger btn-sm" onClick={onWsDisconnect}>Disconnect</button>
+                  </div>
+                </div>
+              )}
+
+              {hwStatus && <p className="muted" style={{ marginTop: 8 }}>{hwStatus}</p>}
+            </div>
+
+            <div>
+              <h3>Result</h3>
+              {hwResult ? (
+                <div className={`result-card ${hwResult.success ? "result-pass" : "result-fail"}`}>
+                  <Badge ok={hwResult.success} />
+                  <p className="result-msg">{hwResult.message}</p>
+                  {hwResult.samples_received !== undefined && (
+                    <div className="result-meta">
+                      <span>Samples received: <b>{hwResult.samples_received}</b></span>
+                      <span>Segments evaluated: <b>{hwResult.segments_evaluated}</b></span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="empty">No hardware authentication attempted yet.</p>
+              )}
+
+              <div className="kv-card" style={{ marginTop: 16 }}>
+                <h3 style={{ margin: 0 }}>Hardware Integration Guide</h3>
+                <p className="muted" style={{ marginTop: 8 }}>
+                  <b>REST API:</b> POST raw EEG to <code>/api/authenticate/raw</code><br />
+                  Body: <code>&#123; eeg_data: [[p4,cz,f8,t7], …], username, subject_id &#125;</code>
+                </p>
+                <p className="muted">
+                  <b>WebSocket:</b> Connect to <code>/ws/stream</code><br />
+                  Send: <code>&#123; type:"init", username, subject_id &#125;</code><br />
+                  Then: <code>&#123; type:"data", samples:[…] &#125;</code> repeatedly<br />
+                  Finally: <code>&#123; type:"predict" &#125;</code>
+                </p>
+                <p className="muted">
+                  See <code>/docs</code> for full API schema.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ========== Metrics ========== */}}
       {tab === "metrics" && (
         <section className="panel">
           <h2>🎯 Model Performance Analytics</h2>
@@ -812,7 +1024,7 @@ export default function App() {
 
       {/* ---------- Footer ---------- */}
       <footer className="footer">
-        EEG Biometric Authentication System &mdash; Real Data Only &mdash; v2.0
+        EEG Biometric Authentication System &mdash; Real Data Only &mdash; v3.0
       </footer>
     </div>
   );

@@ -7,10 +7,10 @@ services:
     container_name: eeg-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-eeg_biometric}
       MYSQL_USER: ${MYSQL_USER:-eeg_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-5911}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./setup_mysql.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -36,8 +36,13 @@ services:
     environment:
       - DB_HOST=mysql
       - DB_USER=${MYSQL_USER:-eeg_user}
-      - DB_PASSWORD=${MYSQL_PASSWORD:-5911}
+      - DB_PASSWORD=${MYSQL_PASSWORD}
       - DB_NAME=${MYSQL_DATABASE:-eeg_biometric}
+      - DB_PORT=3306
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      - API_KEY=${API_KEY:-}
+      - NOTCH_FREQ=${NOTCH_FREQ:-50}
+      - AUTH_THRESHOLD=${AUTH_THRESHOLD:-0.90}
     depends_on:
       mysql:
         condition: service_healthy
@@ -47,11 +52,11 @@ services:
     networks:
       - eeg-network
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
   # Frontend
   frontend:
@@ -78,4 +83,6 @@ volumes:
 
 networks:
   eeg-network:
+    driver: bridge
+
     driver: bridge

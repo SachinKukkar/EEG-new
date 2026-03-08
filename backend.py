@@ -290,45 +290,58 @@ def train_model():
         return False
 
 # --- 3. AUTHENTICATION ---
-def authenticate(username_claim, file_path, threshold=0.90):
+def authenticate(username_claim, file_path, threshold=0.90, precomputed_segments=None):
+    """Authenticate a user.
+
+    Args:
+        username_claim: The username being claimed.
+        file_path: Path to an EEG CSV file. Pass None when using precomputed_segments.
+        threshold: Confidence threshold for accepting a segment match.
+        precomputed_segments: Optional numpy array of shape (N, WINDOW_SIZE, C).
+            When provided, file_path is ignored and these segments are used directly.
+            This is the path taken by the hardware streaming endpoint.
+    """
     print(f"\n--- Authentication attempt for user '{username_claim}' ---")
-    
+
     try:
-        
         # Check if user exists
         if not USERS_PATH.exists():
             return False, "No users registered. Please register users first."
-        
+
         with open(USERS_PATH, 'r') as f:
             users = json.load(f)
         if username_claim not in users:
             return False, f"User '{username_claim}' is not registered."
-        
-        # Note: Subject ID validation moved to authenticate_with_subject_id function
-        
+
         # Check model files exist
         required_files = [MODEL_PATH, ENCODER_PATH, SCALER_PATH]
         if not all(p.exists() for p in required_files):
             return False, "Model not trained. Please train the model first."
-        
-        # Load model components with error handling
+
+        # Load model components
         encoder = joblib.load(ENCODER_PATH)
         scaler = joblib.load(SCALER_PATH)
         model, device = load_production_model(str(MODEL_PATH), num_classes=len(encoder.classes_))
-        
-        # Process segments
-        segments = load_and_segment_csv(file_path)
+
+        # Obtain segments — either pre-processed from hardware or loaded from CSV
+        if precomputed_segments is not None:
+            segments = precomputed_segments
+        else:
+            segments = load_and_segment_csv(file_path)
+
         if len(segments) == 0:
-            return False, "No valid EEG data segments found in the file."
-        
-        # Authenticate segments
-        result = _process_authentication_segments(segments, model, device, scaler, encoder, username_claim, threshold)
-        
+            return False, "No valid EEG data segments found."
+
+        # Run classification
+        result = _process_authentication_segments(
+            segments, model, device, scaler, encoder, username_claim, threshold
+        )
+
         # Log to database
         db.log_authentication(username_claim, result[0], result[2] if len(result) > 2 else 0, result[1])
-        
+
         return result[0], result[1]
-        
+
     except Exception as e:
         error_msg = f"Authentication error: {e}"
         print(f"Error: {error_msg}")
