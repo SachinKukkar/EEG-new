@@ -4,7 +4,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,7 +51,7 @@ class RegisterUserRequest(BaseModel):
 class ApiResponse(BaseModel):
     success: bool
     message: str
-    data: dict[str, Any] | None = None
+    data: Optional[Dict[str, Any]] = None
 
 
 # ---------- Helpers ----------
@@ -70,7 +70,7 @@ def _safe(value: Any) -> Any:
 # ---------- Health ----------
 
 @app.get("/api/health", tags=["System"])
-def health() -> dict[str, Any]:
+def health() -> Dict[str, Any]:
     data_files = 0
     if DATA_DIR.exists():
         data_files = len([f for f in os.listdir(DATA_DIR) if f.endswith(".csv")])
@@ -86,9 +86,9 @@ def health() -> dict[str, Any]:
 # ---------- Users ----------
 
 @app.get("/api/users", tags=["Users"])
-def list_users() -> dict[str, Any]:
+def list_users() -> Dict[str, Any]:
     users = backend.get_registered_users()
-    details: list[dict[str, Any]] = []
+    details: List[Dict[str, Any]] = []
     for username in users:
         info = backend.get_user_info(username)
         if info:
@@ -100,7 +100,7 @@ def list_users() -> dict[str, Any]:
 
 
 @app.get("/api/users/{username}", tags=["Users"])
-def get_user(username: str) -> dict[str, Any]:
+def get_user(username: str) -> Dict[str, Any]:
     info = backend.get_user_info(username)
     if not info:
         raise HTTPException(status_code=404, detail=f"User '{username}' not found")
@@ -133,7 +133,7 @@ def train_model() -> ApiResponse:
 
 
 @app.get("/api/model/status", tags=["Model"])
-def model_status() -> dict[str, Any]:
+def model_status() -> Dict[str, Any]:
     model_exists = MODEL_PATH.exists()
     model_size = 0.0
     if model_exists:
@@ -188,7 +188,7 @@ async def authenticate(
 # ---------- Dashboard ----------
 
 @app.get("/api/dashboard", tags=["Dashboard"])
-def dashboard() -> dict[str, Any]:
+def dashboard() -> Dict[str, Any]:
     data_files = 0
     if DATA_DIR.exists():
         data_files = len([f for f in os.listdir(DATA_DIR) if f.endswith(".csv")])
@@ -206,7 +206,7 @@ def dashboard() -> dict[str, Any]:
 
 
 @app.get("/api/auth-logs", tags=["Dashboard"])
-def auth_logs(limit: int = 50) -> dict[str, Any]:
+def auth_logs(limit: int = 50) -> Dict[str, Any]:
     """Return recent authentication log entries."""
     if not db.available:
         return {"logs": []}
@@ -240,7 +240,7 @@ def auth_logs(limit: int = 50) -> dict[str, Any]:
 # ---------- Metrics ----------
 
 @app.get("/api/metrics", tags=["Metrics"])
-def metrics(threshold: float = 0.90) -> dict[str, Any]:
+def metrics(threshold: float = 0.90) -> Dict[str, Any]:
     result, error = evaluate_real_model()
     if error:
         raise HTTPException(status_code=400, detail=error)
