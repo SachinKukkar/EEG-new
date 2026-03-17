@@ -34,7 +34,7 @@ export default function TrainingTab({ users, modelStatus, busy, onTrain }) {
             <Spinner /> Training...
           </>
         ) : (
-          "⚡ Start Training"
+          "Start Training"
         )}
       </button>
     </section>

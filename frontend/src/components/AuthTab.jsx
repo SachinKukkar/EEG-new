@@ -89,7 +89,7 @@ export default function AuthTab({ authForm, setAuthForm, busy, authResult, authE
                   <Spinner /> Verifying...
                 </>
               ) : (
-                "🔒 Authenticate"
+                "Authenticate"
               )}
             </button>
           </form>

@@ -22,7 +22,7 @@ import Spinner from "./common/Spinner";
 export default function MetricsTab({ metricsThreshold, setMetricsThreshold, busy, metrics, onMetrics }) {
   return (
     <section className="panel">
-      <h2>🎯 Model Performance Analytics</h2>
+      <h2>Model Performance</h2>
       <p className="muted">
         Evaluated on a deterministic holdout set (last 20% of each user&apos;s EEG segments).
       </p>
@@ -57,7 +57,7 @@ export default function MetricsTab({ metricsThreshold, setMetricsThreshold, busy
               <Spinner /> Computing...
             </>
           ) : (
-            "📊 Evaluate Model"
+            "Evaluate"
           )}
         </button>
       </div>

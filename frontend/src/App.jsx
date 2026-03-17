@@ -29,7 +29,7 @@ export default function App() {
     return params.get("tab") || "overview";
   });
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState({ type: "info", text: "Platform ready." });
+  const [notice, setNotice] = useState({ type: "info", text: "Ready." });
   const [theme, setTheme] = useState("light");
 
   // Data
@@ -62,12 +62,12 @@ export default function App() {
   const cards = useMemo(() => {
     const stats = dashboard?.auth_stats || {};
     return [
-      { icon: "👤", label: "Users", value: users.length },
-      { icon: "🧠", label: "Model", value: health?.model_ready ? "Ready" : "Not Trained" },
-      { icon: "📁", label: "CSV Files", value: health?.data_files ?? 0 },
-      { icon: "✅", label: "Success Rate", value: pct(stats.success_rate || 0) },
-      { icon: "📊", label: "Total Auths", value: stats.total_attempts ?? 0 },
-      { icon: "🗄️", label: "Database", value: health?.db_available ? "Online" : "Offline" },
+      { icon: "U", label: "Users", value: users.length },
+      { icon: "M", label: "Model", value: health?.model_ready ? "Ready" : "—" },
+      { icon: "F", label: "Files", value: health?.data_files ?? 0 },
+      { icon: "%", label: "Success", value: pct(stats.success_rate || 0) },
+      { icon: "N", label: "Auths", value: stats.total_attempts ?? 0 },
+      { icon: "DB", label: "Database", value: health?.db_available ? "On" : "Off" },
     ];
   }, [users, health, dashboard]);
 
@@ -88,7 +88,7 @@ export default function App() {
       setDashboard(d);
       setModelStatus(ms);
       setAuthLogs(logs);
-      notify("success", "Data synchronized from API.");
+      notify("success", "Synced.");
     } catch (err) {
       notify("error", err?.response?.data?.detail || err.message || "API unreachable.");
     } finally {
