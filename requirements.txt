@@ -12,5 +12,6 @@ streamlit>=1.28.0
 plotly>=5.14.0
 mysql-connector-python>=8.0.0
 fastapi>=0.115.0
-uvicorn>=0.34.0
+# Latest available uvicorn on PyPI is <0.34, so keep it in a compatible range
+uvicorn>=0.30.0,<0.34.0
 python-multipart>=0.0.20
