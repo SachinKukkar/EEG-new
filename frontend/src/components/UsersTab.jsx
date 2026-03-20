@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import Spinner from "./common/Spinner";
 
 export default function UsersTab({
@@ -6,16 +7,32 @@ export default function UsersTab({
   regForm,
   setRegForm,
   regErrors,
-  delUser,
-  setDelUser,
   onRegister,
   onDeleteUser,
 }) {
+  const sortedUsers = useMemo(
+    () => [...users].sort((a, b) => a.username.localeCompare(b.username)),
+    [users]
+  );
+
+  const letterSections = useMemo(() => {
+    const map = new Map();
+    for (const user of sortedUsers) {
+      const first = (user.username?.[0] || "#").toUpperCase();
+      const letter = /[A-Z]/.test(first) ? first : "#";
+      if (!map.has(letter)) {
+        map.set(letter, []);
+      }
+      map.get(letter).push(user);
+    }
+    return Array.from(map.entries());
+  }, [sortedUsers]);
+
   return (
     <section className="panel">
       <div className="split">
         {/* Register */}
-        <div>
+        <div className="users-register">
           <h2>Register New User</h2>
           <form onSubmit={onRegister} className="form">
             <label>
@@ -47,69 +64,59 @@ export default function UsersTab({
               {busy ? <Spinner /> : null} Register
             </button>
           </form>
-
-          <hr className="divider" />
-
-          <h2>Remove User</h2>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              onDeleteUser(delUser);
-            }}
-            className="form"
-          >
-            <label>
-              Username
-              <input
-                value={delUser}
-                onChange={(e) => setDelUser(e.target.value)}
-                placeholder="Enter username to remove"
-                required
-              />
-            </label>
-            <button className="btn btn-danger" disabled={busy}>
-              {busy ? <Spinner /> : null} Delete User
-            </button>
-          </form>
         </div>
 
         {/* User list */}
-        <div>
+        <div className="users-list-area">
           <h2>Registered Users ({users.length})</h2>
           {users.length === 0 ? (
             <p className="empty">No users registered yet.</p>
           ) : (
-            <div className="user-grid">
-              {users.map((u) => (
-                <div key={u.username} className="user-card">
-                  <div className="user-card-head">
-                    <span className="avatar">{u.username[0]?.toUpperCase()}</span>
-                    <div>
-                      <strong>{u.username}</strong>
-                      <small>Subject #{u.subject_id}</small>
-                    </div>
-                  </div>
-                  <div className="user-card-body">
-                    <span>
-                      Segments: <b>{u.data_segments}</b>
-                    </span>
-                    <span>
-                      Data:{" "}
-                      <b className={u.data_exists ? "text-ok" : "text-bad"}>
-                        {u.data_exists ? "✓" : "✗"}
-                      </b>
-                    </span>
-                  </div>
-                  <button
-                    className="btn btn-sm btn-danger"
-                    disabled={busy}
-                    onClick={() => onDeleteUser(u.username)}
-                  >
-                    Remove
-                  </button>
+            <>
+              <div className="user-jump-nav" aria-label="Jump to users by first letter">
+                {letterSections.map(([letter]) => (
+                  <a key={letter} href={`#users-${letter}`} className="user-jump-link">
+                    {letter}
+                  </a>
+                ))}
+              </div>
+
+              <div className="user-grid-scroll">
+                <div className="user-grid">
+                  {letterSections.map(([letter, letterUsers]) => (
+                    <section key={letter} id={`users-${letter}`} className="user-letter-section">
+                      <h3 className="user-letter-heading">{letter}</h3>
+                      {letterUsers.map((u) => (
+                        <div key={u.username} className="user-card">
+                          <div className="user-card-head">
+                            <span className="avatar">{u.username[0]?.toUpperCase()}</span>
+                            <div>
+                              <strong>{u.username}</strong>
+                              <small>Subject #{u.subject_id}</small>
+                            </div>
+                          </div>
+                          <div className="user-card-body">
+                            <span>
+                              Segments: <b>{u.data_segments}</b>
+                            </span>
+                            <span>
+                              Data: <b className={u.data_exists ? "text-ok" : "text-bad"}>{u.data_exists ? "Available" : "Missing"}</b>
+                            </span>
+                          </div>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            disabled={busy}
+                            onClick={() => onDeleteUser(u.username)}
+                          >
+                            {busy ? <Spinner /> : null} Delete User
+                          </button>
+                        </div>
+                      ))}
+                    </section>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

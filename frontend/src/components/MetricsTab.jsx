@@ -91,14 +91,14 @@ export default function MetricsTab({ metricsThreshold, setMetricsThreshold, busy
           </p>
           <div className="metrics-showcase">
             {[
-              { label: "Accuracy", value: metrics.metrics.Accuracy, color: "#2E86DE", icon: "🎯" },
-              { label: "Precision", value: metrics.metrics.Precision, color: "#10AC84", icon: "✓" },
-              { label: "Recall", value: metrics.metrics.Recall, color: "#F39C12", icon: "📡" },
+              { label: "Accuracy", value: metrics.metrics.Accuracy, color: "#2E86DE", icon: "ACC" },
+              { label: "Precision", value: metrics.metrics.Precision, color: "#10AC84", icon: "PRE" },
+              { label: "Recall", value: metrics.metrics.Recall, color: "#F39C12", icon: "REC" },
               {
                 label: "F1 Score",
                 value: metrics.metrics.F1_Score || metrics.metrics.F1,
                 color: "#9B59B6",
-                icon: "⚖️",
+                icon: "F1",
               },
             ].map((m) => (
               <div
@@ -130,7 +130,7 @@ export default function MetricsTab({ metricsThreshold, setMetricsThreshold, busy
           <div className="chart-grid-2">
             {/* ROC Curve */}
             <div className="chart-card">
-              <h3>📈 ROC Curve (AUC = {(metrics.metrics.AUC || 0).toFixed(3)})</h3>
+              <h3>ROC Curve (AUC = {(metrics.metrics.AUC || 0).toFixed(3)})</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart
                   data={(() => {
@@ -148,12 +148,14 @@ export default function MetricsTab({ metricsThreshold, setMetricsThreshold, busy
                   <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
                   <XAxis
                     dataKey="fpr"
+                    tickFormatter={(value) => parseFloat(value).toFixed(3)}
                     label={{ value: "False Positive Rate", position: "insideBottom", offset: -5 }}
                   />
                   <YAxis
+                    tickFormatter={(value) => parseFloat(value).toFixed(3)}
                     label={{ value: "True Positive Rate", angle: -90, position: "insideLeft" }}
                   />
-                  <Tooltip formatter={(value) => value.toFixed(3)} />
+                  <Tooltip formatter={(value) => parseFloat(value).toFixed(3)} />
                   <Area
                     type="monotone"
                     dataKey="tpr"
@@ -178,7 +180,7 @@ export default function MetricsTab({ metricsThreshold, setMetricsThreshold, busy
 
             {/* Confusion Matrix */}
             <div className="chart-card">
-              <h3>🔲 Confusion Matrix</h3>
+              <h3>Confusion Matrix</h3>
               <div className="confusion-matrix">
                 <div className="cm-labels">
                   <div className="cm-label-y">
@@ -278,7 +280,7 @@ export default function MetricsTab({ metricsThreshold, setMetricsThreshold, busy
 
             {/* Performance Radar */}
             <div className="chart-card">
-              <h3>🎯 Performance Radar</h3>
+              <h3>Performance Radar</h3>
               <ResponsiveContainer width="100%" height={280}>
                 <RadarChart
                   data={[
