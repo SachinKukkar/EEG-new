@@ -32,10 +32,24 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+
+def _get_cors_origins() -> List[str]:
+    """Return allowed CORS origins from env, or sensible deployment defaults."""
+    raw = os.getenv("CORS_ORIGINS", "")
+    if raw.strip():
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "https://eeg-new.vercel.app",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_get_cors_origins(),
+    # Allow preview deployments like https://<project>-<hash>.vercel.app
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
