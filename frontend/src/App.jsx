@@ -42,7 +42,6 @@ export default function App() {
 
   // Forms
   const [regForm, setRegForm] = useState({ username: "", subjectId: 1 });
-  const [delUser, setDelUser] = useState("");
   const [authForm, setAuthForm] = useState({
     username: "",
     subjectId: 1,
@@ -62,12 +61,12 @@ export default function App() {
   const cards = useMemo(() => {
     const stats = dashboard?.auth_stats || {};
     return [
-      { icon: "U", label: "Users", value: users.length },
-      { icon: "M", label: "Model", value: health?.model_ready ? "Ready" : "—" },
-      { icon: "F", label: "Files", value: health?.data_files ?? 0 },
-      { icon: "%", label: "Success", value: pct(stats.success_rate || 0) },
-      { icon: "N", label: "Auths", value: stats.total_attempts ?? 0 },
-      { icon: "DB", label: "Database", value: health?.db_available ? "On" : "Off" },
+      { label: "Users", value: users.length },
+      { label: "Model", value: health?.model_ready ? "Ready" : "—" },
+      { label: "Files", value: health?.data_files ?? 0 },
+      { label: "Success", value: pct(stats.success_rate || 0) },
+      { label: "Auths", value: stats.total_attempts ?? 0 },
+      { label: "Database", value: health?.db_available ? "On" : "Off" },
     ];
   }, [users, health, dashboard]);
 
@@ -165,7 +164,6 @@ export default function App() {
       const res = await deleteUser(username.trim());
       notify(res.success ? "success" : "error", res.message);
       if (res.success) {
-        setDelUser("");
         await refresh();
       }
     } catch (err) {
@@ -275,8 +273,6 @@ export default function App() {
           regForm={regForm}
           setRegForm={setRegForm}
           regErrors={regErrors}
-          delUser={delUser}
-          setDelUser={setDelUser}
           onRegister={onRegister}
           onDeleteUser={onDeleteUser}
         />
