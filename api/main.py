@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +12,14 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+# Setup logging for production diagnostics
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger("eeg-api")
 
 # Ensure project root is importable
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -32,27 +42,68 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+logger.info(f"Initializing EEG API from {PROJECT_ROOT}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Log startup information for debugging."""
+    logger.info("=" * 80)
+    logger.info("EEG API Starting Up")
+    logger.info("=" * 80)
+    logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
+    logger.info(f"Database available: {db.available}")
+    logger.info(f"Model path: {MODEL_PATH}")
+    logger.info(f"Frontend dist: {FRONTEND_DIST}")
+    logger.info(f"Allowed CORS origins: {_get_cors_origins()}")
+    logger.info("Startup complete.")
+    logger.info("=" * 80)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Log shutdown information."""
+    logger.info("EEG API shutting down.")
+
+
 
 def _get_cors_origins() -> List[str]:
-    """Return allowed CORS origins from env, or sensible deployment defaults."""
+    """Return allowed CORS origins from env, or sensible deployment defaults.
+    
+    Priority:
+    1. Environment variable CORS_ORIGINS (comma-separated)
+    2. Hardcoded production defaults
+    """
     raw = os.getenv("CORS_ORIGINS", "")
     if raw.strip():
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return [
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "https://eeg-new.vercel.app",
+        origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        logger.info(f"CORS origins from env: {origins}")
+        return origins
+    
+    defaults = [
+        "http://localhost:5173",  # Vite dev
+        "http://localhost:5174",  # Vite alt port
+        "http://localhost:3000",  # Common dev port
+        "http://127.0.0.1:5173",
+        "https://eeg-new.vercel.app",  # Production frontend
     ]
+    logger.info(f"CORS origins from defaults: {defaults}")
+    return defaults
 
+
+logger.info("Setting up CORS middleware...")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_get_cors_origins(),
-    # Allow preview deployments like https://<project>-<hash>.vercel.app
+    # Allow all Vercel preview deployments (*.vercel.app)
     allow_origin_regex=r"https://.*\.vercel\.app",
+    # Don't send credentials in cross-origin requests to avoid browser issues
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=3600,
 )
+logger.info("CORS middleware configured successfully.")
 
 
 # ---------- Pydantic models ----------
@@ -85,16 +136,31 @@ def _safe(value: Any) -> Any:
 
 @app.get("/api/health", tags=["System"])
 def health() -> Dict[str, Any]:
-    data_files = 0
-    if DATA_DIR.exists():
-        data_files = len([f for f in os.listdir(DATA_DIR) if f.endswith(".csv")])
-    return {
-        "status": "ok",
-        "model_ready": MODEL_PATH.exists(),
-        "registered_users": len(backend.get_registered_users()),
-        "data_files": data_files,
-        "db_available": db.available,
-    }
+    """Health check endpoint with detailed diagnostics."""
+    logger.info("Health check requested")
+    try:
+        data_files = 0
+        if DATA_DIR.exists():
+            data_files = len([f for f in os.listdir(DATA_DIR) if f.endswith(".csv")])
+        
+        result = {
+            "status": "ok",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model_ready": MODEL_PATH.exists(),
+            "registered_users": len(backend.get_registered_users()),
+            "data_files": data_files,
+            "db_available": db.available,
+            "environment": os.getenv("ENVIRONMENT", "unknown"),
+        }
+        logger.info(f"Health check success: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "timestamp": datetime.utcnow().isoformat(),
+            "error": str(e),
+        }
 
 
 # ---------- Users ----------
@@ -137,13 +203,27 @@ def delete_user(username: str) -> ApiResponse:
 
 @app.post("/api/model/train", response_model=ApiResponse, tags=["Model"])
 def train_model() -> ApiResponse:
-    users = backend.get_registered_users()
-    if len(users) < 2:
-        return ApiResponse(success=False, message=f"Need at least 2 users to train. Currently {len(users)} registered.")
-    success = backend.train_model()
-    if success:
-        return ApiResponse(success=True, message="Training completed and model assets saved.")
-    return ApiResponse(success=False, message="Training failed. Check server logs for details.")
+    """Train the model on all registered users' data."""
+    logger.info("Training request received")
+    try:
+        users = backend.get_registered_users()
+        if len(users) < 2:
+            msg = f"Need at least 2 users to train. Currently {len(users)} registered."
+            logger.warning(msg)
+            return ApiResponse(success=False, message=msg)
+        
+        logger.info(f"Starting training with {len(users)} users")
+        success = backend.train_model()
+        
+        if success:
+            logger.info("Training completed successfully")
+            return ApiResponse(success=True, message="Training completed and model assets saved.")
+        else:
+            logger.error("Training failed")
+            return ApiResponse(success=False, message="Training failed. Check server logs for details.")
+    except Exception as e:
+        logger.error(f"Training error: {str(e)}", exc_info=True)
+        return ApiResponse(success=False, message=f"Training error: {str(e)}")
 
 
 @app.get("/api/model/status", tags=["Model"])

@@ -74,22 +74,67 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     setBusy(true);
+    const errors = [];
+    
     try {
-      const [h, u, d, ms, logs] = await Promise.all([
-        getHealth(),
+      // Validate backend health first
+      const h = await getHealth().catch(() => {
+        throw new Error(
+          `Backend unreachable. Make sure the backend is running at ${
+            import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
+          }`
+        );
+      });
+
+      // Parallel fetch other data with individual error handling
+      const results = await Promise.allSettled([
         getUsers(),
         getDashboard(),
         getModelStatus().catch(() => null),
         getAuthLogs().catch(() => []),
       ]);
+
+      const [usersResult, dashboardResult, modelStatusResult, authLogsResult] =
+        results;
+
+      if (usersResult.status === "fulfilled") {
+        setUsers(usersResult.value);
+      } else {
+        errors.push("Could not fetch users list");
+      }
+
+      if (dashboardResult.status === "fulfilled") {
+        setDashboard(dashboardResult.value);
+      } else {
+        errors.push("Could not fetch dashboard data");
+      }
+
+      if (modelStatusResult.status === "fulfilled") {
+        setModelStatus(modelStatusResult.value);
+      } else {
+        console.warn("Could not fetch model status");
+      }
+
+      if (authLogsResult.status === "fulfilled") {
+        setAuthLogs(authLogsResult.value);
+      } else {
+        console.warn("Could not fetch auth logs");
+      }
+
       setHealth(h);
-      setUsers(u);
-      setDashboard(d);
-      setModelStatus(ms);
-      setAuthLogs(logs);
-      notify("success", "Synced.");
+
+      if (errors.length > 0) {
+        notify("warning", `Partial sync: ${errors.join(", ")}`);
+      } else {
+        notify("success", "Synced.");
+      }
     } catch (err) {
-      notify("error", err?.response?.data?.detail || err.message || "API unreachable.");
+      const message =
+        err?.response?.data?.detail ||
+        err.message ||
+        "API unreachable - backend may be starting up or not configured properly.";
+      console.error("Refresh error:", err);
+      notify("error", message);
     } finally {
       setBusy(false);
     }
@@ -151,7 +196,9 @@ export default function App() {
         await refresh();
       }
     } catch (err) {
-      notify("error", err?.response?.data?.detail || "Registration failed.");
+      const msg = err?.response?.data?.detail || err.message || "Registration failed.";
+      console.error("Registration error:", err);
+      notify("error", msg);
     } finally {
       setBusy(false);
     }
@@ -181,9 +228,16 @@ export default function App() {
     try {
       const res = await trainModel();
       notify(res.success ? "success" : "error", res.message);
-      await refresh();
+      if (res.success) {
+        await refresh();
+      }
     } catch (err) {
-      notify("error", err?.response?.data?.detail || "Training failed.");
+      const msg =
+        err?.response?.data?.detail ||
+        err.message ||
+        "Training failed - backend may be unreachable or still starting up.";
+      console.error("Training error:", err);
+      notify("error", msg);
     } finally {
       setBusy(false);
     }
@@ -221,10 +275,14 @@ export default function App() {
       });
       setAuthResult(res);
       notify(res.success ? "success" : "error", res.message);
-      await refresh();
+      if (res.success) {
+        await refresh();
+      }
     } catch (err) {
-      const msg = err?.response?.data?.detail || "Authentication failed.";
+      const msg =
+        err?.response?.data?.detail || err.message || "Authentication failed.";
       setAuthResult({ success: false, message: msg });
+      console.error("Authentication error:", err);
       notify("error", msg);
     } finally {
       setBusy(false);
@@ -240,7 +298,12 @@ export default function App() {
       setMetrics(data);
       notify("success", `Metrics computed on ${data.sample_count} holdout samples.`);
     } catch (err) {
-      notify("error", err?.response?.data?.detail || "Metrics evaluation failed.");
+      const msg =
+        err?.response?.data?.detail ||
+        err.message ||
+        "Metrics evaluation failed - ensure the model is trained.";
+      console.error("Metrics error:", err);
+      notify("error", msg);
     } finally {
       setBusy(false);
     }
